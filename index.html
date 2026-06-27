@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CivicReport — Fix Your City</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,400;1,600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="config.js"></script>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<!-- FOOTER -->
+<footer class="footer">
+  <strong>CivicReport</strong> — AI-Powered Civic Issue Reporting Platform &nbsp;|&nbsp; 
+  Powered by Gemini AI &nbsp;|&nbsp; Made for Berhampur, Odisha 🏙️
+</footer>
+<body>
+<svg width="0" height="0">
+  <defs>
+    <linearGradient id="healthGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+  </defs>
+</svg>
+<!-- TOP BAR -->
+<div class="topbar">
+  <span>🏛️ CivicReport — Official Community Issue Portal</span>
+  <div>
+    <a href="#report">Report Issue</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#issues">Track Issues</a>
+  </div>
+</div>
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="brand-dot"></span>
+      CivicReport
+    </div>
+    <div class="nav-links">
+      <a href="#report">Report</a>
+      <a href="#issues">Live Issues</a>
+      <a href="#dashboard">Dashboard</a>
+    </div>
+    <div class="nav-badge">🏙️ Berhampur</div>
+    
+  </nav>
+  <!-- NEWS TICKER -->
+<div class="ticker-wrap">
+  <div class="ticker-track" id="tickerTrack">
+    <span>🔴 Loading latest issues...</span>
+  </div>
+</div>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-eyebrow">AI-Powered Community Platform</div>
+      <h1>Your city. <br/><span class="accent">Your voice.</span></h1>
+      <p>Snap a photo. Report an issue. Watch your community fix it — together.</p>
+      <a href="#report" class="btn-primary">Report an Issue ↓</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><span id="stat-reported">0</span><label>Reported</label></div>
+      <div class="stat"><span id="stat-resolved">0</span><label>Resolved</label></div>
+      <div class="stat"><span id="stat-citizens">0</span><label>Citizens</label></div>
+    </div>
+    <!-- MOTIVATIONAL QUOTE -->
+<div class="quote-banner">
+  <div class="quote-inner">
+    <span class="quote-icon">❝</span>
+    <p class="quote-text">The strength of a nation derives from the integrity of the home.</p>
+    <span class="quote-author">— APJ Abdul Kalam</span>
+  </div>
+</div>
+    <!-- CITY HEALTH SCORE -->
+<div class="health-score-wrap">
+  <svg class="health-ring" viewBox="0 0 120 120">
+    <circle class="ring-bg" cx="60" cy="60" r="50"/>
+    <circle class="ring-fill" id="healthRing" cx="60" cy="60" r="50"
+      stroke-dasharray="314" stroke-dashoffset="314"/>
+  </svg>
+  <div class="health-center">
+    <span id="healthScore">0</span>
+    <label>City Health</label>
+  </div>
+</div>
+  </section>
+
+  <!-- REPORT FORM -->
+  <section class="section" id="report">
+    <div class="section-header">
+      <span class="section-tag">Step 1</span>
+      <h2>Report an Issue</h2>
+      <p>Upload a photo and let Gemini AI analyze it automatically</p>
+    </div>
+
+    <div class="form-card">
+      <!-- Image Upload -->
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="imageInput" accept="image/*" hidden/>
+        <div class="upload-inner" id="uploadInner">
+          <div class="upload-icon">📸</div>
+          <p>Click to upload or drag & drop a photo</p>
+          <span>JPG, PNG up to 10MB</span>
+        </div>
+        <img id="previewImg" class="preview-img hidden" alt="preview"/>
+      </div>
+
+      <!-- AI Analysis Result -->
+      <div class="ai-result hidden" id="aiResult">
+        <div class="ai-badge">✨ Gemini AI Analysis</div>
+        <div id="aiText" class="ai-text">Analyzing your image...</div>
+        <div class="ai-tags" id="aiTags"></div>
+      </div>
+
+      <!-- Form Fields -->
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Issue Title</label>
+          <input type="text" id="issueTitle" placeholder="e.g. Large pothole on Main Road"/>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="issueCategory">
+            <option value="">-- AI will detect --</option>
+            <option value="Road Damage">🛣️ Road Damage</option>
+            <option value="Water Leakage">💧 Water Leakage</option>
+            <option value="Streetlight">💡 Streetlight</option>
+            <option value="Waste Management">🗑️ Waste Management</option>
+            <option value="Public Infrastructure">🏗️ Public Infrastructure</option>
+            <option value="Other">📌 Other</option>
+          </select>
+        </div>
+        <div class="form-group full-width">
+          <label>Description</label>
+          <textarea id="issueDesc" rows="3" placeholder="Describe the issue in detail..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Your Name</label>
+          <input type="text" id="reporterName" placeholder="Citizen name"/>
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="issueLocation" placeholder="e.g. Near Bus Stand, Berhampur" id="locationInput"/>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-analyze" id="analyzeBtn" disabled>🔍 Analyze with Gemini</button>
+        <button class="btn-submit" id="submitBtn">📤 Submit Report</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section class="section" id="issues">
+    <div class="section-header">
+      <span class="section-tag">Live Map</span>
+      <h2>Issues Near You</h2>
+      <p>Real-time community issue tracking across your city</p>
+    </div>
+    <div id="map" class="map-container"></div>
+  </section>
+
+  <!-- ISSUES LIST -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-tag">Community Feed</span>
+      <h2>Recent Reports</h2>
+    </div>
+    <div class="issues-grid" id="issuesList"></div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section class="section" id="dashboard">
+    <div class="section-header">
+      <span class="section-tag">Impact Dashboard</span>
+      <h2>City Health Overview</h2>
+    </div>
+    <!-- CHARTS -->
+<div class="charts-grid">
+  <div class="chart-card">
+    <div class="chart-title">📊 Issues by Category</div>
+    <canvas id="categoryChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">🍩 Status Overview</div>
+    <canvas id="statusChart"></canvas>
+  </div>
+</div>
+    <div class="dashboard-grid">
+      <div class="dash-card">
+        <div class="dash-icon">🛣️</div>
+        <div class="dash-label">Road Damage</div>
+        <div class="dash-count" id="count-road">0</div>
+        <div class="dash-bar"><div class="dash-fill" id="bar-road" style="width:0%"></div></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">💧</div>
+        <div class="dash-label">Water Leakage</div>
+        <div class="dash-count" id="count-water">0</div>
+        <div class="dash-bar"><div class="dash-fill" id="bar-water" style="width:0%"></div></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">💡</div>
+        <div class="dash-label">Streetlight</div>
+        <div class="dash-count" id="count-light">0</div>
+        <div class="dash-bar"><div class="dash-fill" id="bar-light" style="width:0%"></div></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">🗑️</div>
+        <div class="dash-label">Waste Management</div>
+        <div class="dash-count" id="count-waste">0</div>
+        <div class="dash-bar"><div class="dash-fill" id="bar-waste" style="width:0%"></div></div>
+      </div>
+    </div>
+  </section>
+  <!-- LEADERBOARD -->
+<section class="section">
+  <div class="section-header">
+    <span class="section-tag">Gamification</span>
+    <h2>Top Citizens 🏆</h2>
+    <p>Earn points by reporting, verifying and resolving issues</p>
+  </div>
+  <div class="form-card leaderboard-section">
+    <table class="leaderboard-table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Citizen</th>
+          <th>Points</th>
+          <th>Reports</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboardBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- PREDICTIVE INSIGHTS -->
+<section class="section">
+  <div class="section-header">
+    <span class="section-tag">AI Insights</span>
+    <h2>Predictive City Analysis 🧠</h2>
+    <p>Gemini analyzes your city data and predicts future issues</p>
+  </div>
+  <div class="insights-grid" id="insightsGrid">
+    <p class="insights-loading">Click below to generate AI insights ✨</p>
+  </div>
+  <button class="btn-insights" id="insightsBtn" onclick="generateInsights()">
+    ✨ Generate Insights with Gemini
+  </button>
+</section>
+
+  <!-- TOAST -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
