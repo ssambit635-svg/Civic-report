@@ -2,266 +2,484 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CivicReport — Fix Your City</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CivicReport — Your City. Your Voice.</title>
+  <meta name="description" content="Snap a photo. Let AI do the paperwork. Watch your community fix the city — together. AI-powered civic issue reporting for Berhampur, Odisha." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B0A08'/%3E%3Cpath d='M16 6c-4.4 0-8 3.6-8 8 0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8z' fill='%23FF5A1F'/%3E%3Ccircle cx='16' cy='14' r='3' fill='%230B0A08'/%3E%3C/svg%3E" />
+
+  <!-- Fonts: Clash Display + General Sans (Fontshare) with Google fallbacks -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,400;1,600&display=swap" rel="stylesheet"/>
-  <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="config.js"></script>
-<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
-<!-- FOOTER -->
-<footer class="footer">
-  <strong>CivicReport</strong> — AI-Powered Civic Issue Reporting Platform &nbsp;|&nbsp; 
-  Powered by Gemini AI &nbsp;|&nbsp; Made for Berhampur, Odisha 🏙️
-</footer>
 <body>
-<svg width="0" height="0">
-  <defs>
-    <linearGradient id="healthGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#3b82f6"/>
-      <stop offset="100%" style="stop-color:#06b6d4"/>
-    </linearGradient>
-  </defs>
-</svg>
-<!-- TOP BAR -->
-<div class="topbar">
-  <span>🏛️ CivicReport — Official Community Issue Portal</span>
-  <div>
-    <a href="#report">Report Issue</a>
-    <a href="#dashboard">Dashboard</a>
-    <a href="#issues">Track Issues</a>
-  </div>
-</div>
-  <!-- NAVBAR -->
-  <nav class="navbar">
-    <div class="nav-brand">
-      <span class="brand-dot"></span>
-      CivicReport
-    </div>
-    <div class="nav-links">
-      <a href="#report">Report</a>
-      <a href="#issues">Live Issues</a>
-      <a href="#dashboard">Dashboard</a>
-    </div>
-    <div class="nav-badge">🏙️ Berhampur</div>
-    
-  </nav>
-  <!-- NEWS TICKER -->
-<div class="ticker-wrap">
-  <div class="ticker-track" id="tickerTrack">
-    <span>🔴 Loading latest issues...</span>
-  </div>
-</div>
 
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero-content">
-      <div class="hero-eyebrow">AI-Powered Community Platform</div>
-      <h1>Your city. <br/><span class="accent">Your voice.</span></h1>
-      <p>Snap a photo. Report an issue. Watch your community fix it — together.</p>
-      <a href="#report" class="btn-primary">Report an Issue ↓</a>
-    </div>
-    <div class="hero-stats">
-      <div class="stat"><span id="stat-reported">0</span><label>Reported</label></div>
-      <div class="stat"><span id="stat-resolved">0</span><label>Resolved</label></div>
-      <div class="stat"><span id="stat-citizens">0</span><label>Citizens</label></div>
-    </div>
-    <!-- MOTIVATIONAL QUOTE -->
-<div class="quote-banner">
-  <div class="quote-inner">
-    <span class="quote-icon">❝</span>
-    <p class="quote-text">The strength of a nation derives from the integrity of the home.</p>
-    <span class="quote-author">— APJ Abdul Kalam</span>
-  </div>
-</div>
-    <!-- CITY HEALTH SCORE -->
-<div class="health-score-wrap">
-  <svg class="health-ring" viewBox="0 0 120 120">
-    <circle class="ring-bg" cx="60" cy="60" r="50"/>
-    <circle class="ring-fill" id="healthRing" cx="60" cy="60" r="50"
-      stroke-dasharray="314" stroke-dashoffset="314"/>
-  </svg>
-  <div class="health-center">
-    <span id="healthScore">0</span>
-    <label>City Health</label>
-  </div>
-</div>
-  </section>
+  <!-- Scroll progress -->
+  <div class="scroll-progress" id="scrollProgress"></div>
 
-  <!-- REPORT FORM -->
-  <section class="section" id="report">
-    <div class="section-header">
-      <span class="section-tag">Step 1</span>
-      <h2>Report an Issue</h2>
-      <p>Upload a photo and let Gemini AI analyze it automatically</p>
-    </div>
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="#top" class="nav-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="currentColor"/><circle cx="12" cy="9" r="2.6" fill="var(--bg)"/></svg>
+        </span>
+        CivicReport<sup>®</sup>
+      </a>
 
-    <div class="form-card">
-      <!-- Image Upload -->
-      <div class="upload-zone" id="uploadZone">
-        <input type="file" id="imageInput" accept="image/*" hidden/>
-        <div class="upload-inner" id="uploadInner">
-          <div class="upload-icon">📸</div>
-          <p>Click to upload or drag & drop a photo</p>
-          <span>JPG, PNG up to 10MB</span>
-        </div>
-        <img id="previewImg" class="preview-img hidden" alt="preview"/>
+      <nav class="nav-links" id="navLinks" aria-label="Primary">
+        <a href="#report" data-nav="report">Report</a>
+        <a href="#live" data-nav="live">Live Issues</a>
+        <a href="#dashboard" data-nav="dashboard">Dashboard</a>
+        <a href="#insights" data-nav="insights">Insights</a>
+      </nav>
+
+      <div class="nav-right">
+        <span class="nav-loc" title="Serving Berhampur, Odisha">
+          <span class="dot-live"></span>Berhampur
+        </span>
+        <a href="#report" class="btn btn-primary btn-sm">Report an issue</a>
+        <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false">
+          <span></span><span></span>
+        </button>
       </div>
+    </div>
+  </header>
 
-      <!-- AI Analysis Result -->
-      <div class="ai-result hidden" id="aiResult">
-        <div class="ai-badge">✨ Gemini AI Analysis</div>
-        <div id="aiText" class="ai-text">Analyzing your image...</div>
-        <div class="ai-tags" id="aiTags"></div>
-      </div>
+  <main id="top">
 
-      <!-- Form Fields -->
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Issue Title</label>
-          <input type="text" id="issueTitle" placeholder="e.g. Large pothole on Main Road"/>
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <!-- Parallax floating shapes -->
+      <div class="hero-floats" aria-hidden="true">
+        <div class="float f-pin" data-depth="28">
+          <svg viewBox="0 0 64 64" fill="none"><path d="M32 6C21.5 6 13 14.5 13 25c0 14 19 33 19 33s19-19 19-33C51 14.5 42.5 6 32 6z" stroke="var(--accent)" stroke-width="2.5"/><circle cx="32" cy="24" r="7" stroke="var(--accent)" stroke-width="2.5"/></svg>
         </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select id="issueCategory">
-            <option value="">-- AI will detect --</option>
-            <option value="Road Damage">🛣️ Road Damage</option>
-            <option value="Water Leakage">💧 Water Leakage</option>
-            <option value="Streetlight">💡 Streetlight</option>
-            <option value="Waste Management">🗑️ Waste Management</option>
-            <option value="Public Infrastructure">🏗️ Public Infrastructure</option>
-            <option value="Other">📌 Other</option>
-          </select>
+        <div class="float f-spark" data-depth="-20">
+          <svg viewBox="0 0 48 48" fill="none"><path d="M24 2v44M2 24h44M8 8l32 32M40 8L8 40" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/></svg>
         </div>
-        <div class="form-group full-width">
-          <label>Description</label>
-          <textarea id="issueDesc" rows="3" placeholder="Describe the issue in detail..."></textarea>
+        <div class="float f-ring" data-depth="16">
+          <svg viewBox="0 0 72 72" fill="none"><circle cx="36" cy="36" r="30" stroke="var(--text)" stroke-opacity="0.35" stroke-width="2"/><circle cx="36" cy="36" r="30" stroke="var(--accent)" stroke-width="2" stroke-dasharray="47 142" stroke-linecap="round"/></svg>
         </div>
-        <div class="form-group">
-          <label>Your Name</label>
-          <input type="text" id="reporterName" placeholder="Citizen name"/>
+        <div class="float f-tri" data-depth="-14">
+          <svg viewBox="0 0 64 56" fill="none"><path d="M32 4 60 52H4L32 4z" stroke="var(--text)" stroke-opacity="0.4" stroke-width="2" stroke-linejoin="round"/><path d="M32 20v12" stroke="var(--text)" stroke-opacity="0.6" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="40" r="1.8" fill="var(--text)" fill-opacity="0.6"/></svg>
         </div>
-        <div class="form-group">
-          <label>Location</label>
-          <input type="text" id="issueLocation" placeholder="e.g. Near Bus Stand, Berhampur" id="locationInput"/>
+        <div class="float f-target" data-depth="10">
+          <svg viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="22" stroke="var(--text)" stroke-opacity="0.3" stroke-width="2"/><circle cx="28" cy="28" r="10" stroke="var(--text)" stroke-opacity="0.3" stroke-width="2"/><circle cx="28" cy="28" r="3" fill="var(--accent)"/></svg>
         </div>
       </div>
 
-      <div class="form-actions">
-        <button class="btn-analyze" id="analyzeBtn" disabled>🔍 Analyze with Gemini</button>
-        <button class="btn-submit" id="submitBtn">📤 Submit Report</button>
+      <div class="container hero-inner">
+        <p class="eyebrow" data-reveal>
+          <span class="eyebrow-tick"></span>AI-powered civic reporting platform
+        </p>
+
+        <h1 class="hero-title">
+          <span class="line" data-reveal data-delay="80"><span class="reveal-text">Your city.</span></span>
+          <span class="line" data-reveal data-delay="180"><span class="reveal-text outline">Your voice.</span></span>
+        </h1>
+
+        <div class="hero-sub" data-reveal data-delay="300">
+          <p>Snap a photo. Let AI do the paperwork.<br/>Watch your community fix it — together.</p>
+          <div class="hero-cta">
+            <a href="#report" class="btn btn-primary">
+              Report an issue
+              <svg viewBox="0 0 16 16" fill="none"><path d="M8 1v14M2 9l6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+            <a href="#live" class="btn btn-ghost">View live map</a>
+          </div>
+        </div>
+      </div>
+
+      <a href="#stats" class="hero-badge" aria-label="Scroll to explore">
+        <svg viewBox="0 0 100 100" class="badge-rotor" aria-hidden="true">
+          <defs><path id="badgeCircle" d="M50,50 m-38,0 a38,38 0 1,1 76,0 a38,38 0 1,1 -76,0"/></defs>
+          <text><textPath href="#badgeCircle">SCROLL TO EXPLORE — CIVIC REPORT —&nbsp;</textPath></text>
+        </svg>
+        <svg viewBox="0 0 16 16" class="badge-arrow" aria-hidden="true"><path d="M8 2v12M3 9l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+
+      <!-- Live ticker -->
+      <div class="ticker" aria-label="Latest community reports">
+        <span class="ticker-label"><span class="dot-live"></span>Live</span>
+        <div class="ticker-viewport">
+          <div class="ticker-track" id="tickerTrack"><span>Loading latest reports…</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MARQUEE ============ -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span class="marquee-group">
+          Every pothole deserves to be fixed <i>✦</i> Report <i>✦</i> Verify <i>✦</i> Resolve <i>✦</i> Repeat <i>✦</i> Berhampur <i>✦</i>
+        </span>
+        <span class="marquee-group">
+          Every pothole deserves to be fixed <i>✦</i> Report <i>✦</i> Verify <i>✦</i> Resolve <i>✦</i> Repeat <i>✦</i> Berhampur <i>✦</i>
+        </span>
       </div>
     </div>
-  </section>
 
-  <!-- MAP -->
-  <section class="section" id="issues">
-    <div class="section-header">
-      <span class="section-tag">Live Map</span>
-      <h2>Issues Near You</h2>
-      <p>Real-time community issue tracking across your city</p>
-    </div>
-    <div id="map" class="map-container"></div>
-  </section>
-
-  <!-- ISSUES LIST -->
-  <section class="section">
-    <div class="section-header">
-      <span class="section-tag">Community Feed</span>
-      <h2>Recent Reports</h2>
-    </div>
-    <div class="issues-grid" id="issuesList"></div>
-  </section>
-
-  <!-- DASHBOARD -->
-  <section class="section" id="dashboard">
-    <div class="section-header">
-      <span class="section-tag">Impact Dashboard</span>
-      <h2>City Health Overview</h2>
-    </div>
-    <!-- CHARTS -->
-<div class="charts-grid">
-  <div class="chart-card">
-    <div class="chart-title">📊 Issues by Category</div>
-    <canvas id="categoryChart"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">🍩 Status Overview</div>
-    <canvas id="statusChart"></canvas>
-  </div>
-</div>
-    <div class="dashboard-grid">
-      <div class="dash-card">
-        <div class="dash-icon">🛣️</div>
-        <div class="dash-label">Road Damage</div>
-        <div class="dash-count" id="count-road">0</div>
-        <div class="dash-bar"><div class="dash-fill" id="bar-road" style="width:0%"></div></div>
+    <!-- ============ STATS ============ -->
+    <section class="section stats-section" id="stats">
+      <div class="container">
+        <div class="stats-grid">
+          <div class="stat" data-reveal>
+            <span class="stat-num" id="stat-reported">0</span>
+            <span class="stat-label">Issues reported<br/>by the community</span>
+          </div>
+          <div class="stat" data-reveal data-delay="80">
+            <span class="stat-num" id="stat-resolved">0</span>
+            <span class="stat-label">Issues resolved<br/>&amp; verified closed</span>
+          </div>
+          <div class="stat" data-reveal data-delay="160">
+            <span class="stat-num" id="stat-citizens">0</span>
+            <span class="stat-label">Active citizens<br/>on the platform</span>
+          </div>
+          <div class="stat" data-reveal data-delay="240">
+            <span class="stat-num" id="stat-points">0</span>
+            <span class="stat-label">Community points<br/>earned so far</span>
+          </div>
+        </div>
       </div>
-      <div class="dash-card">
-        <div class="dash-icon">💧</div>
-        <div class="dash-label">Water Leakage</div>
-        <div class="dash-count" id="count-water">0</div>
-        <div class="dash-bar"><div class="dash-fill" id="bar-water" style="width:0%"></div></div>
+    </section>
+
+    <!-- ============ MANIFESTO ============ -->
+    <section class="section manifesto-section">
+      <div class="container">
+        <p class="eyebrow" data-reveal><span class="eyebrow-tick"></span>Why CivicReport exists</p>
+        <p class="manifesto-text" id="manifestoText">
+          Reporting a broken streetlight shouldn't take three office visits. CivicReport turns every citizen into the eyes of the city — snap a photo, let AI handle the paperwork, and watch your neighbourhood repair itself, one report at a time.
+        </p>
+        <p class="manifesto-sign" data-reveal>— Team CivicReport, Berhampur</p>
       </div>
-      <div class="dash-card">
-        <div class="dash-icon">💡</div>
-        <div class="dash-label">Streetlight</div>
-        <div class="dash-count" id="count-light">0</div>
-        <div class="dash-bar"><div class="dash-fill" id="bar-light" style="width:0%"></div></div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section class="section stages-section">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <div>
+            <p class="eyebrow"><span class="eyebrow-tick"></span>How it works</p>
+            <h2 class="section-title">From photo<br/>to fixed.</h2>
+          </div>
+          <p class="section-desc">The journey of a single report — from the moment you notice a problem to the moment it disappears from the map.</p>
+        </div>
+
+        <div class="stages-grid">
+          <article class="stage-card" data-reveal>
+            <span class="stage-num">01</span>
+            <h3>Snap &amp; upload</h3>
+            <p>See a pothole, leak, dead streetlight or overflowing bin? Take a photo and drop it in. No forms, no queues, no paperwork.</p>
+            <p class="stage-foot">Takes under 10 seconds</p>
+          </article>
+          <article class="stage-card" data-reveal data-delay="100">
+            <span class="stage-num">02</span>
+            <h3>AI does the paperwork</h3>
+            <p>Gemini AI analyses the image, detects the issue type, assigns severity and drafts the description — the form fills itself.</p>
+            <p class="stage-foot">Powered by Gemini 1.5 Flash</p>
+          </article>
+          <article class="stage-card" data-reveal data-delay="200">
+            <span class="stage-num">03</span>
+            <h3>Community fixes it</h3>
+            <p>Neighbours verify the report, authorities pick it up, status updates live on the map — and you earn points for the city.</p>
+            <p class="stage-foot">Every action is rewarded</p>
+          </article>
+        </div>
       </div>
-      <div class="dash-card">
-        <div class="dash-icon">🗑️</div>
-        <div class="dash-label">Waste Management</div>
-        <div class="dash-count" id="count-waste">0</div>
-        <div class="dash-bar"><div class="dash-fill" id="bar-waste" style="width:0%"></div></div>
+    </section>
+
+    <!-- ============ REPORT ============ -->
+    <section class="section report-section" id="report">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <div>
+            <p class="eyebrow"><span class="eyebrow-tick"></span>Step 01 — Report</p>
+            <h2 class="section-title">Report<br/>an issue.</h2>
+          </div>
+          <p class="section-desc">Upload a photo and let Gemini AI analyse it automatically — or fill the details yourself. One minute is all it takes.</p>
+        </div>
+
+        <div class="report-layout" data-reveal>
+          <!-- Left: upload + AI -->
+          <div class="report-left">
+            <div class="upload-zone" id="uploadZone" tabindex="0" role="button" aria-label="Upload a photo">
+              <input type="file" id="imageInput" accept="image/*" hidden />
+              <div class="upload-inner" id="uploadInner">
+                <svg viewBox="0 0 48 48" fill="none" class="upload-icon"><rect x="4" y="10" width="40" height="28" rx="4" stroke="currentColor" stroke-width="2.5"/><circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="2.5"/><path d="M33 10l-4-5h-10l-4 5" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>
+                <p class="upload-title">Click to upload or drag &amp; drop</p>
+                <p class="upload-sub">A clear photo of the issue — JPG or PNG, up to 10MB</p>
+              </div>
+              <img id="previewImg" class="preview-img hidden" alt="Preview of the issue photo" />
+              <button class="preview-remove hidden" id="previewRemove" aria-label="Remove photo">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+
+            <div class="ai-result hidden" id="aiResult" aria-live="polite">
+              <div class="ai-head">
+                <span class="ai-dot"></span>Gemini analysis
+                <span class="ai-status" id="aiStatus">Scanning image…</span>
+              </div>
+              <div id="aiText" class="ai-text">Analyzing your image…</div>
+              <div class="ai-tags" id="aiTags"></div>
+            </div>
+          </div>
+
+          <!-- Right: fields -->
+          <div class="report-right">
+            <div class="field-grid">
+              <div class="field span-2">
+                <label for="issueTitle">Issue title</label>
+                <input type="text" id="issueTitle" placeholder="e.g. Large pothole on Main Road" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="issueCategory">Category</label>
+                <select id="issueCategory">
+                  <option value="">AI will detect</option>
+                  <option value="Road Damage">Road Damage</option>
+                  <option value="Water Leakage">Water Leakage</option>
+                  <option value="Streetlight">Streetlight</option>
+                  <option value="Waste Management">Waste Management</option>
+                  <option value="Public Infrastructure">Public Infrastructure</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="issueSeverity">Severity</label>
+                <select id="issueSeverity">
+                  <option value="Low">Low</option>
+                  <option value="Medium" selected>Medium</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="issueLocation">Location</label>
+                <input type="text" id="issueLocation" placeholder="e.g. Near Bus Stand" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="reporterName">Your name</label>
+                <input type="text" id="reporterName" placeholder="Anonymous" autocomplete="off" />
+              </div>
+              <div class="field span-2">
+                <label for="issueDesc">Description</label>
+                <textarea id="issueDesc" rows="3" placeholder="Describe the issue — or let AI write it for you…"></textarea>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-ghost" id="analyzeBtn" disabled>
+                <svg viewBox="0 0 16 16" fill="none"><path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13 6.2 8.8 2 7l4.2-1.8L8 1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                Analyse with AI
+              </button>
+              <button class="btn btn-primary" id="submitBtn">
+                Submit report
+                <svg viewBox="0 0 16 16" fill="none"><path d="M2 8h12M9 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <p class="form-note">No key detected? Reports still work — AI analysis needs a free Gemini API key in <code>config.js</code>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LIVE ISSUES ============ -->
+    <section class="section live-section" id="live">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <div>
+            <p class="eyebrow"><span class="eyebrow-tick"></span>Step 02 — Track</p>
+            <h2 class="section-title">Issues near<br/>you.</h2>
+          </div>
+          <p class="section-desc">Every report lands on the live map in real time. Filter by category, verify what you've seen, and share it forward.</p>
+        </div>
+
+        <div class="filter-pills" id="filterPills" role="tablist" aria-label="Filter issues by category">
+          <button class="pill active" data-filter="all">All</button>
+          <button class="pill" data-filter="Road Damage">Road</button>
+          <button class="pill" data-filter="Water Leakage">Water</button>
+          <button class="pill" data-filter="Streetlight">Light</button>
+          <button class="pill" data-filter="Waste Management">Waste</button>
+          <button class="pill" data-filter="Public Infrastructure">Infra</button>
+        </div>
+
+        <div class="map-wrap" id="map" data-reveal></div>
+
+        <h3 class="feed-title" data-reveal>Recent reports</h3>
+        <div class="issues-grid" id="issuesList"></div>
+      </div>
+    </section>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="section dashboard-section" id="dashboard">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <div>
+            <p class="eyebrow"><span class="eyebrow-tick"></span>Step 03 — Measure</p>
+            <h2 class="section-title">City health<br/>overview.</h2>
+          </div>
+          <p class="section-desc">A live pulse of the city — what's broken, what's being fixed, and how healthy Berhampur is right now.</p>
+        </div>
+
+        <div class="dash-top" data-reveal>
+          <div class="health-card">
+            <div class="health-ring-wrap">
+              <svg class="health-ring" viewBox="0 0 120 120">
+                <circle class="ring-bg" cx="60" cy="60" r="54"/>
+                <circle class="ring-fill" id="healthRing" cx="60" cy="60" r="54" stroke-dasharray="339.3" stroke-dashoffset="339.3"/>
+              </svg>
+              <div class="health-center">
+                <span id="healthScore">0</span>
+                <em id="healthLabel">—</em>
+              </div>
+            </div>
+            <div class="health-meta">
+              <h3>City Health Score</h3>
+              <p>Computed live from issue severity, open backlogs and resolution rate across every report.</p>
+              <div class="health-legend">
+                <span><i class="lg lg-good"></i>70+</span>
+                <span><i class="lg lg-mid"></i>40–69</span>
+                <span><i class="lg lg-bad"></i>Below 40</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-title">Issues by category</div>
+            <div class="chart-box"><canvas id="categoryChart" aria-label="Bar chart of issues by category"></canvas></div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-title">Status breakdown</div>
+            <div class="chart-box"><canvas id="statusChart" aria-label="Donut chart of issue status"></canvas></div>
+          </div>
+        </div>
+
+        <div class="dash-categories" data-reveal>
+          <div class="cat-row">
+            <span class="cat-name">Road Damage</span>
+            <div class="cat-bar"><div class="cat-fill" id="bar-road"></div></div>
+            <span class="cat-count" id="count-road">0</span>
+          </div>
+          <div class="cat-row">
+            <span class="cat-name">Water Leakage</span>
+            <div class="cat-bar"><div class="cat-fill" id="bar-water"></div></div>
+            <span class="cat-count" id="count-water">0</span>
+          </div>
+          <div class="cat-row">
+            <span class="cat-name">Streetlight</span>
+            <div class="cat-bar"><div class="cat-fill" id="bar-light"></div></div>
+            <span class="cat-count" id="count-light">0</span>
+          </div>
+          <div class="cat-row">
+            <span class="cat-name">Waste Management</span>
+            <div class="cat-bar"><div class="cat-fill" id="bar-waste"></div></div>
+            <span class="cat-count" id="count-waste">0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LEADERBOARD ============ -->
+    <section class="section leaderboard-section" id="citizens">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <div>
+            <p class="eyebrow"><span class="eyebrow-tick"></span>Gamification</p>
+            <h2 class="section-title">Top<br/>citizens.</h2>
+          </div>
+          <p class="section-desc">Report to earn 10 pts, resolve for 25, verify for 5. Climb from Newcomer to City Champion.</p>
+        </div>
+
+        <div class="leaderboard" data-reveal>
+          <div class="lb-head">
+            <span>Rank</span><span>Citizen</span><span class="lb-right">Points</span><span class="lb-right">Reports</span>
+          </div>
+          <div id="leaderboardBody"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ INSIGHTS ============ -->
+    <section class="section insights-section" id="insights">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <div>
+            <p class="eyebrow"><span class="eyebrow-tick"></span>AI insights</p>
+            <h2 class="section-title">Predictive city<br/>analysis.</h2>
+          </div>
+          <p class="section-desc">Gemini reads the city's data and predicts what breaks next — so authorities can act before it does.</p>
+        </div>
+
+        <div class="insights-grid" id="insightsGrid">
+          <p class="insights-empty">Generate a snapshot of where your city is heading — powered by Gemini AI.</p>
+        </div>
+        <button class="btn btn-primary insights-btn" id="insightsBtn">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13 6.2 8.8 2 7l4.2-1.8L8 1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          Generate insights
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ BIG CTA ============ -->
+    <section class="section cta-section">
+      <div class="container cta-inner" data-reveal>
+        <p class="eyebrow"><span class="eyebrow-tick"></span>Spot something broken?</p>
+        <a href="#report" class="cta-link">
+          <span class="cta-word">Report it</span>
+          <span class="cta-circle">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="container">
+      <a href="#top" class="footer-word" aria-label="Back to top">CivicReport</a>
+
+      <div class="footer-grid">
+        <div class="footer-col">
+          <p class="footer-tag">AI-powered civic issue reporting for Berhampur, Odisha — because every pothole deserves to be fixed.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Explore</h4>
+          <a href="#report">Report an issue</a>
+          <a href="#live">Live map</a>
+          <a href="#dashboard">Dashboard</a>
+          <a href="#insights">AI insights</a>
+        </div>
+        <div class="footer-col">
+          <h4>Built with</h4>
+          <span>Google Gemini AI</span>
+          <span>Leaflet + OpenStreetMap</span>
+          <span>Chart.js</span>
+          <span>Lots of chai</span>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>© 2026 CivicReport — Made with care for Berhampur</span>
+        <button class="reset-demo" id="resetDemo">Reset demo data</button>
       </div>
     </div>
-  </section>
-  <!-- LEADERBOARD -->
-<section class="section">
-  <div class="section-header">
-    <span class="section-tag">Gamification</span>
-    <h2>Top Citizens 🏆</h2>
-    <p>Earn points by reporting, verifying and resolving issues</p>
-  </div>
-  <div class="form-card leaderboard-section">
-    <table class="leaderboard-table">
-      <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Citizen</th>
-          <th>Points</th>
-          <th>Reports</th>
-        </tr>
-      </thead>
-      <tbody id="leaderboardBody"></tbody>
-    </table>
-  </div>
-</section>
+  </footer>
 
-<!-- PREDICTIVE INSIGHTS -->
-<section class="section">
-  <div class="section-header">
-    <span class="section-tag">AI Insights</span>
-    <h2>Predictive City Analysis 🧠</h2>
-    <p>Gemini analyzes your city data and predicts future issues</p>
-  </div>
-  <div class="insights-grid" id="insightsGrid">
-    <p class="insights-loading">Click below to generate AI insights ✨</p>
-  </div>
-  <button class="btn-insights" id="insightsBtn" onclick="generateInsights()">
-    ✨ Generate Insights with Gemini
-  </button>
-</section>
-
-  <!-- TOAST -->
-  <div class="toast hidden" id="toast"></div>
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
-
 </html>

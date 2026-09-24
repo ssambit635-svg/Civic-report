@@ -151,8 +151,9 @@ const CONFIG = {
 civic-report/
 │
 ├── index.html          # Main HTML — all sections
-├── style.css           # Full styling — light govt theme
+├── style.css           # Full styling — dark editorial theme (safety-orange accent)
 ├── app.js              # All JavaScript logic + Gemini API calls
+├── config.example.js   # Template for your API key (copy to config.js)
 ├── config.js           # 🔒 API key (NOT pushed to GitHub)
 ├── .gitignore          # Ignores config.js
 └── README.md           # You are here!

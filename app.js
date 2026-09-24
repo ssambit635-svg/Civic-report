@@ -1,56 +1,381 @@
-// ============================================================
-//  CivicReport — app.js  (Day 2 Update)
-//  Replace YOUR_GEMINI_API_KEY with your real key
-// ============================================================
+/* ============================================================
+   CivicReport — app.js
+   AI-powered civic issue reporting · Gemini + Leaflet + Chart.js
+   ============================================================ */
+'use strict';
 
-const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"; // 🔑 paste your key here
+/* ---------- Config ----------
+   Paste your Gemini key here, OR create config.js (see README):
+     const CONFIG = { GEMINI_API_KEY: "..." };
+--------------------------------- */
+const GEMINI_API_KEY = ""; // ← optional: paste key here
 
-// ===== STATE =====
-let issues = JSON.parse(localStorage.getItem("civicIssues") || "[]");
+const API_KEY =
+  (typeof CONFIG !== "undefined" && CONFIG.GEMINI_API_KEY) || GEMINI_API_KEY;
+const hasKey = () =>
+  typeof API_KEY === "string" &&
+  API_KEY.length > 20 &&
+  !API_KEY.includes("YOUR_");
+
+const GEMINI_URL = (key) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+
+/* ---------- State ---------- */
+const LS_KEY = "civicIssues";
+let issues = [];
 let currentImageBase64 = null;
+let activeFilter = "all";
 let map = null;
+let markersLayer = null;
+let statsAnimated = false;
 
-// ===== INIT =====
+const $ = (id) => document.getElementById(id);
+const esc = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+
+/* ---------- Demo seed data (first visit only) ---------- */
+function seedDemoData() {
+  const h = (n) => Date.now() - n * 3600e3;
+  return [
+    { id: h(2),      title: "Water pipeline burst on Khetan Bose Road", category: "Water Leakage", description: "A major pipeline has burst near the market crossing, flooding the entire lane. Two-wheelers are skidding and shops are sandbagging their entrances.", reporter: "Ashok Kumar", location: "Khetan Bose Road", lat: 19.3121, lng: 84.7985, severity: "Critical", status: "In Progress", upvotes: 22, verifiedBy: 9, image: null, timestamp: new Date(h(2)).toISOString() },
+    { id: h(7),      title: "Open drain causing hazard on Canal Street", category: "Public Infrastructure", description: "The drain cover has been missing for weeks. It is directly on the school walking route and dangerously deep.", reporter: "Arjun Behera", location: "Canal Street", lat: 19.3094, lng: 84.7902, severity: "Critical", status: "Open", upvotes: 19, verifiedBy: 8, image: null, timestamp: new Date(h(7)).toISOString() },
+    { id: h(13),     title: "Garbage overflow at Bada Bazaar bin point", category: "Waste Management", description: "Bins have not been cleared for four days. Waste is spilling onto the road and the smell is unbearable by evening.", reporter: "Sambit Swain", location: "Bada Bazaar", lat: 19.3156, lng: 84.8011, severity: "High", status: "Open", upvotes: 17, verifiedBy: 5, image: null, timestamp: new Date(h(13)).toISOString() },
+    { id: h(26),     title: "Massive pothole near Khallikote College gate", category: "Road Damage", description: "A two-foot-wide pothole right at the college junction. Three riders have fallen this week — it fills with water and becomes invisible after rain.", reporter: "Ravi Patra", location: "Khallikote College", lat: 19.3067, lng: 84.7948, severity: "High", status: "Open", upvotes: 14, verifiedBy: 6, image: null, timestamp: new Date(h(26)).toISOString() },
+    { id: h(38),     title: "Sewage water logging at Gate Bazaar", category: "Water Leakage", description: "Stagnant sewage water has collected across the bus-stop approach. Strong odour and mosquito breeding reported by residents.", reporter: "Nandini Rao", location: "Gate Bazaar", lat: 19.3178, lng: 84.7956, severity: "High", status: "In Progress", upvotes: 12, verifiedBy: 4, image: null, timestamp: new Date(h(38)).toISOString() },
+    { id: h(52),     title: "Footpath tiles broken near Ramalingam Tank", category: "Public Infrastructure", description: "Broken pavers and exposed wiring along a 50-metre stretch. Elderly pedestrians are avoiding the footpath entirely.", reporter: "Meera Das", location: "Ramalingam Tank", lat: 19.3041, lng: 84.7993, severity: "Medium", status: "Resolved", upvotes: 11, verifiedBy: 7, image: null, timestamp: new Date(h(52)).toISOString() },
+    { id: h(66),     title: "Streetlight out for two weeks — Gandhi Nagar", category: "Streetlight", description: "Four consecutive poles are dead on the main lane. The stretch is completely dark after 7pm and women avoid the route.", reporter: "Priya Sahu", location: "Gandhi Nagar", lat: 19.3132, lng: 84.7887, severity: "Medium", status: "Open", upvotes: 8, verifiedBy: 3, image: null, timestamp: new Date(h(66)).toISOString() },
+    { id: h(80),     title: "Collapsed boundary wall at old bus stand", category: "Public Infrastructure", description: "An old compound wall collapsed onto the parking area. Bricks are scattered across two-wheeler parking bays.", reporter: "Dilip Mohanty", location: "Old Bus Stand", lat: 19.3110, lng: 84.7864, severity: "High", status: "Resolved", upvotes: 9, verifiedBy: 6, image: null, timestamp: new Date(h(80)).toISOString() },
+    { id: h(96),     title: "Broken swing and rusty bench — NMV Park", category: "Public Infrastructure", description: "The children's swing chain is snapped and the bench frame is rusted through. Parents have flagged it multiple times.", reporter: "Kavya Mishra", location: "NMV Park", lat: 19.3085, lng: 84.8036, severity: "Low", status: "Open", upvotes: 5, verifiedBy: 2, image: null, timestamp: new Date(h(96)).toISOString() },
+  ];
+}
+
+function loadIssues() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      issues = JSON.parse(raw);
+      if (!Array.isArray(issues)) issues = [];
+    }
+  } catch (_) { issues = []; }
+  if (issues.length === 0) {
+    issues = seedDemoData();
+    save();
+  }
+}
+const save = () => localStorage.setItem(LS_KEY, JSON.stringify(issues));
+
+/* ---------- Helpers ---------- */
+const SEV_CLASS = { low: "low", medium: "medium", high: "high", critical: "critical" };
+const sevClass = (s) => SEV_CLASS[(s || "medium").toLowerCase()] || "medium";
+
+const CATEGORY_ART = {
+  "Road Damage": "art-road",
+  "Water Leakage": "art-water",
+  "Streetlight": "art-light",
+  "Waste Management": "art-waste",
+  "Public Infrastructure": "art-infra",
+  "Other": "art-other",
+};
+const CATEGORY_ICON = {
+  "Road Damage": '<path d="M4 34c4-10 8-14 12-14s6 4 8 8 4 6 8 6 6-4 8-10" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round"/>',
+  "Water Leakage": '<path d="M24 4C15 16 10 22 10 29a14 14 0 0 0 28 0c0-7-5-13-14-25z" stroke="currentColor" stroke-width="3" fill="none" stroke-linejoin="round"/>',
+  "Streetlight": '<circle cx="24" cy="14" r="7" stroke="currentColor" stroke-width="3" fill="none"/><path d="M24 21v20M14 41h20" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
+  "Waste Management": '<path d="M8 12h32M14 12l2-6h16l2 6M12 12l3 30h18l3-30" stroke="currentColor" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>',
+  "Public Infrastructure": '<path d="M6 40h36M10 40V22l14-10 14 10v18M18 40V28h12v12" stroke="currentColor" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>',
+  "Other": '<circle cx="24" cy="24" r="17" stroke="currentColor" stroke-width="3" fill="none"/><path d="M24 15v18M15 24h18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
+};
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60e3);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+
+/* ============================================================
+   INIT
+============================================================ */
 document.addEventListener("DOMContentLoaded", () => {
+  loadIssues();
+  initNav();
   initMap();
-  renderIssues();
-  updateStats();
-  updateDashboard();
-  animateHeroStats();
-  setupUploadZone();
+  initUploadZone();
+  initFilters();
+  initMotion();
+  renderAll();
+  window.scrollTo({ top: 0 }); // start at top on refresh
 });
 
-// ===== MAP =====
+window.addEventListener("load", () => {
+  document.body.classList.add("loaded");
+  setTimeout(() => map && map.invalidateSize(), 200);
+});
+
+function renderAll(fitMap = false) {
+  renderFeed(true);
+  refreshMarkers(fitMap);
+  updateStats();
+  updateDashboard();
+  updateHealthScore();
+  renderLeaderboard();
+  updateTicker();
+}
+
+/* ============================================================
+   NAV
+============================================================ */
+function initNav() {
+  const nav = $("nav");
+  const toggle = $("navToggle");
+  const links = $("navLinks");
+  const progress = $("scrollProgress");
+
+  const onScroll = () => {
+    nav.classList.toggle("scrolled", window.scrollY > 30);
+    const max = document.documentElement.scrollHeight - innerHeight;
+    progress.style.width = (max > 0 ? (scrollY / max) * 100 : 0) + "%";
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  toggle.addEventListener("click", () => {
+    const open = links.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", String(open));
+  });
+  links.querySelectorAll("a").forEach((a) =>
+    a.addEventListener("click", () => {
+      links.classList.remove("open");
+      toggle.setAttribute("aria-expanded", "false");
+    })
+  );
+
+  // Active link highlighting
+  const sections = ["report", "live", "dashboard", "insights"];
+  const navObs = new IntersectionObserver(
+    (entries) => entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      links.querySelectorAll("a").forEach((a) =>
+        a.classList.toggle("active", a.dataset.nav === e.target.id)
+      );
+    }),
+    { rootMargin: "-35% 0px -55% 0px" }
+  );
+  sections.forEach((id) => {
+    const el = $(id);
+    if (el) navObs.observe(el);
+  });
+
+  $("resetDemo").addEventListener("click", () => {
+    localStorage.removeItem(LS_KEY);
+    showToast("Demo data reset — reloading…", "success");
+    setTimeout(() => location.reload(), 700);
+  });
+}
+
+/* ============================================================
+   MOTION — reveals, parallax, counters, manifesto
+============================================================ */
+const prefersReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function initMotion() {
+  if (prefersReduced) {
+    document.querySelectorAll("[data-reveal]").forEach((el) => el.classList.add("in"));
+    splitManifesto(true);
+    return;
+  }
+
+  // Reveal on scroll
+  const revealObs = new IntersectionObserver(
+    (entries) =>
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.style.setProperty("--d", (e.target.dataset.delay || 0) + "ms");
+          e.target.classList.add("in");
+          revealObs.unobserve(e.target);
+        }
+      }),
+    { threshold: 0.12 }
+  );
+  document.querySelectorAll("[data-reveal]").forEach((el) => revealObs.observe(el));
+
+  // Hero parallax — mouse + scroll
+  const floats = [...document.querySelectorAll(".float")];
+  if (floats.length) {
+    let mx = 0, my = 0, cx = 0, cy = 0;
+    const hero = document.querySelector(".hero");
+    hero.addEventListener("mousemove", (e) => {
+      mx = (e.clientX / innerWidth - 0.5) * 2;
+      my = (e.clientY / innerHeight - 0.5) * 2;
+    });
+    const tick = () => {
+      cx += (mx - cx) * 0.06;
+      cy += (my - cy) * 0.06;
+      floats.forEach((f) => {
+        const d = parseFloat(f.dataset.depth || 10);
+        const scrollDrift = Math.min(scrollY, innerHeight) * 0.06;
+        f.style.transform = `translate(${cx * d}px, ${cy * d + scrollDrift * (d > 0 ? 0.5 : -0.3)}px)`;
+      });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // Animated counters (stats)
+  const statObs = new IntersectionObserver(
+    (entries) =>
+      entries.forEach((e) => {
+        if (e.isIntersecting && !statsAnimated) {
+          statsAnimated = true;
+          animateStats();
+          statObs.disconnect();
+        }
+      }),
+    { threshold: 0.4 }
+  );
+  const statsSection = $("stats");
+  if (statsSection) statObs.observe(statsSection);
+
+  // Manifesto word reveal
+  splitManifesto(false);
+  const manifesto = document.querySelector(".manifesto-text");
+  if (manifesto) {
+    const words = [...manifesto.querySelectorAll(".w")];
+    const onScrollM = () => {
+      const r = manifesto.getBoundingClientRect();
+      const vh = innerHeight;
+      const progress = Math.min(1, Math.max(0, (vh * 0.85 - r.top) / (r.height + vh * 0.35)));
+      const active = Math.floor(progress * words.length);
+      words.forEach((w, i) => w.classList.toggle("on", i < active));
+    };
+    window.addEventListener("scroll", onScrollM, { passive: true });
+    onScrollM();
+  }
+}
+
+function splitManifesto(instant) {
+  const el = document.querySelector(".manifesto-text");
+  if (!el || el.dataset.split) return;
+  const words = el.textContent.trim().split(/\s+/);
+  el.innerHTML = words.map((w) => `<span class="w${instant ? " on" : ""}">${esc(w)}</span>`).join(" ");
+  el.dataset.split = "1";
+}
+
+function animateStats() {
+  const targets = {
+    "stat-reported": issues.length,
+    "stat-resolved": issues.filter((i) => i.status === "Resolved").length,
+    "stat-citizens": new Set(issues.map((i) => i.reporter)).size,
+    "stat-points": [...new Set(issues.map((i) => i.reporter))].reduce((a, r) => a + getPoints(r), 0),
+  };
+  Object.entries(targets).forEach(([id, target], idx) => {
+    const el = $(id);
+    if (!el) return;
+    const dur = 1300 + idx * 150;
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(eased * target);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+function setStatsDirect() {
+  $("stat-reported").textContent = issues.length;
+  $("stat-resolved").textContent = issues.filter((i) => i.status === "Resolved").length;
+  $("stat-citizens").textContent = new Set(issues.map((i) => i.reporter)).size;
+  $("stat-points").textContent = [...new Set(issues.map((i) => i.reporter))].reduce((a, r) => a + getPoints(r), 0);
+}
+
+/* ============================================================
+   TICKER
+============================================================ */
+function updateTicker() {
+  const track = $("tickerTrack");
+  if (!track) return;
+
+  const items = issues.length
+    ? issues.slice(0, 8).map(
+        (i) =>
+          `<span><em>●</em> <b>${esc(i.reporter)}</b> reported <b>${esc(i.category)}</b> in ${esc(i.location)} — ${esc(i.status)}</span>`
+      )
+    : ["<span><em>●</em> Be the first to report an issue in your area</span>"];
+
+  const group = items.join("");
+  track.innerHTML = group + group; // duplicated for seamless -50% loop
+}
+
+/* ============================================================
+   MAP
+============================================================ */
 function initMap() {
-  map = L.map("map").setView([19.3149, 84.7941], 13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap contributors"
+  map = L.map("map", { scrollWheelZoom: false, attributionControl: true }).setView([19.3115, 84.7952], 13);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: "abcd",
+    maxZoom: 19,
   }).addTo(map);
-  issues.forEach(issue => addMarkerToMap(issue));
+  markersLayer = L.layerGroup().addTo(map);
+
+  map.on("click", () => map.scrollWheelZoom.enable());
+  map.on("mouseout", () => map.scrollWheelZoom.disable());
 }
 
-function addMarkerToMap(issue) {
-  if (!issue.lat || !issue.lng) return;
-  const color = issue.status === "Resolved" ? "#10b981" : issue.status === "In Progress" ? "#f59e0b" : "#ef4444";
-  const marker = L.circleMarker([issue.lat, issue.lng], {
-    radius: 10, fillColor: color, color: "#fff",
-    weight: 2, opacity: 1, fillOpacity: 0.9
-  }).addTo(map);
-  marker.bindPopup(`
-    <strong>${issue.title}</strong><br/>
-    <em>${issue.category}</em> — <strong>${issue.severity || 'Medium'}</strong><br/>
-    Status: ${issue.status}<br/>
-    By: ${issue.reporter}<br/>
-    ✅ ${issue.verifiedBy || 0} community verifications
-  `);
+function markerHtml(issue) {
+  const cls = issue.status === "Resolved" ? "mk-resolved" : `mk-${sevClass(issue.severity)}`;
+  return `<div class="mk ${cls}"></div>`;
 }
 
-// ===== UPLOAD ZONE =====
-function setupUploadZone() {
-  const zone = document.getElementById("uploadZone");
-  const input = document.getElementById("imageInput");
+function refreshMarkers() {
+  if (!map || !markersLayer) return;
+  markersLayer.clearLayers();
+  const bounds = [];
+  issues.forEach((issue) => {
+    if (issue.lat == null || issue.lng == null) return;
+    const icon = L.divIcon({
+      html: markerHtml(issue),
+      className: "",
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+    L.marker([issue.lat, issue.lng], { icon })
+      .addTo(markersLayer)
+      .bindPopup(`
+        <div class="popup-title">${esc(issue.title)}</div>
+        <div class="popup-meta">
+          ${esc(issue.category)} · ${esc(issue.severity || "Medium")}<br/>
+          Status: ${esc(issue.status)}<br/>
+          ${esc(issue.reporter)} · ${timeAgo(issue.timestamp)}<br/>
+          ${issue.verifiedBy || 0} community verifications
+        </div>
+      `);
+    bounds.push([issue.lat, issue.lng]);
+  });
+  if (bounds.length && issues.length <= 12) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+}
 
-  zone.addEventListener("click", () => input.click());
+/* ============================================================
+   UPLOAD + GEMINI ANALYSIS
+============================================================ */
+function initUploadZone() {
+  const zone = $("uploadZone");
+  const input = $("imageInput");
+  const removeBtn = $("previewRemove");
+
+  zone.addEventListener("click", (e) => {
+    if (e.target.closest(".preview-remove")) return;
+    input.click();
+  });
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
   input.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (file) handleImageFile(file);
@@ -63,42 +388,89 @@ function setupUploadZone() {
     const file = e.dataTransfer.files[0];
     if (file) handleImageFile(file);
   });
+  removeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    resetUpload();
+  });
 
-  document.getElementById("analyzeBtn").addEventListener("click", analyzeWithGemini);
-  document.getElementById("submitBtn").addEventListener("click", submitReport);
+  $("analyzeBtn").addEventListener("click", analyzeWithGemini);
+  $("submitBtn").addEventListener("click", submitReport);
 }
 
 function handleImageFile(file) {
+  if (!file.type.startsWith("image/")) {
+    showToast("Please upload an image file.", "error");
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showToast("Image is larger than 10MB — try a smaller photo.", "error");
+    return;
+  }
   const reader = new FileReader();
   reader.onload = (e) => {
-    const base64 = e.target.result.split(",")[1];
-    currentImageBase64 = base64;
-    const preview = document.getElementById("previewImg");
+    currentImageBase64 = e.target.result.split(",")[1];
+    const preview = $("previewImg");
     preview.src = e.target.result;
     preview.classList.remove("hidden");
-    document.getElementById("uploadInner").classList.add("hidden");
-    document.getElementById("analyzeBtn").disabled = false;
+    $("uploadInner").classList.add("hidden");
+    $("previewRemove").classList.remove("hidden");
+    $("analyzeBtn").disabled = false;
   };
   reader.readAsDataURL(file);
 }
 
-// ===== GEMINI AI ANALYSIS =====
+function resetUpload() {
+  currentImageBase64 = null;
+  $("imageInput").value = "";
+  $("previewImg").classList.add("hidden");
+  $("previewRemove").classList.add("hidden");
+  $("uploadInner").classList.remove("hidden");
+  $("analyzeBtn").disabled = true;
+}
+
+async function callGemini(prompt, imageBase64) {
+  const res = await fetch(GEMINI_URL(API_KEY), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          ...(imageBase64 ? [{ inline_data: { mime_type: "image/jpeg", data: imageBase64 } }] : []),
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini API error ${res.status}`);
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
 async function analyzeWithGemini() {
   if (!currentImageBase64) return;
 
-  const btn = document.getElementById("analyzeBtn");
-  btn.textContent = "⏳ Analyzing...";
+  const btn = $("analyzeBtn");
+  const result = $("aiResult");
+  const status = $("aiStatus");
+
+  if (!hasKey()) {
+    result.classList.remove("hidden");
+    $("aiText").innerHTML =
+      "<strong>No Gemini API key detected.</strong><br/>Create <b>config.js</b> with your free key from aistudio.google.com — reporting still works without it.";
+    $("aiTags").innerHTML = "";
+    status.textContent = "Offline";
+    showToast("AI analysis needs a Gemini API key in config.js", "error");
+    return;
+  }
+
   btn.disabled = true;
+  btn.innerHTML = "Analysing…";
+  result.classList.remove("hidden");
+  $("aiText").textContent = "Gemini is scanning your photo…";
+  $("aiTags").innerHTML = "";
+  status.textContent = "Scanning image…";
 
-  const aiResult = document.getElementById("aiResult");
-  const aiText = document.getElementById("aiText");
-  const aiTags = document.getElementById("aiTags");
-
-  aiResult.classList.remove("hidden");
-  aiText.textContent = "Gemini is analyzing your image...";
-  aiTags.innerHTML = "";
-
-  const prompt = `You are an AI assistant for a civic issue reporting platform. 
+  const prompt = `You are an AI assistant for a civic issue reporting platform in Berhampur, India.
 Analyze this image and provide:
 1. What community/infrastructure issue is visible
 2. Severity level: Low / Medium / High / Critical
@@ -117,706 +489,548 @@ Respond in this exact JSON format only, no extra text:
 }`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: "image/jpeg", data: currentImageBase64 } }
-            ]
-          }]
-        })
-      }
-    );
-
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const rawText = await callGemini(prompt, currentImageBase64);
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON in response");
 
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      const severityColor = { "Low": "#10b981", "Medium": "#f59e0b", "High": "#ef4444", "Critical": "#dc2626" }[result.severity] || "#3b82f6";
+    const r = JSON.parse(jsonMatch[0]);
+    const sev = (r.severity || "Medium").toLowerCase();
+    const sevColor = { low: "var(--sev-low)", medium: "var(--sev-medium)", high: "var(--sev-high)", critical: "var(--sev-critical)" }[sev] || "var(--text)";
 
-      aiText.innerHTML = `
-        <strong style="color:${severityColor}">⚠️ ${result.issue}</strong> — Severity: 
-        <span style="color:${severityColor}">${result.severity}</span><br/>
-        ${result.description}<br/>
-        <em style="color:#64748b; font-size:0.85rem">💡 ${result.action}</em>
-      `;
+    $("aiText").innerHTML = `
+      <strong style="color:${sevColor}">${esc(r.issue)}</strong> — severity
+      <strong style="color:${sevColor}">${esc(r.severity)}</strong><br/>
+      ${esc(r.description)}<br/>
+      <em style="color:var(--muted);font-size:0.85rem">Action: ${esc(r.action)}</em>`;
+    status.textContent = "Analysis complete";
 
-      document.getElementById("issueTitle").value = result.issue;
-      document.getElementById("issueCategory").value = result.category;
-      document.getElementById("issueDesc").value = result.description;
+    $("issueTitle").value = r.issue || "";
+    if (r.category) $("issueCategory").value = r.category;
+    if (r.severity) $("issueSeverity").value = r.severity;
+    $("issueDesc").value = r.description || "";
 
-      // store severity for submit
-      document.getElementById("analyzeBtn").dataset.severity = result.severity;
+    const tags = r.tags?.length ? r.tags : [r.category, r.severity].filter(Boolean);
+    $("aiTags").innerHTML = tags.map((t) => `<span class="ai-tag">${esc(t)}</span>`).join("");
 
-      (result.tags || [result.category, result.severity]).forEach(tag => {
-        const span = document.createElement("span");
-        span.className = "ai-tag";
-        span.textContent = tag;
-        aiTags.appendChild(span);
-      });
-    } else {
-      aiText.textContent = rawText || "Analysis complete. Please fill in the details below.";
-    }
+    showToast("AI analysis complete — form auto-filled", "success");
   } catch (err) {
-    aiText.textContent = "⚠️ Could not analyze image. Please fill in details manually.";
     console.error("Gemini error:", err);
+    $("aiText").textContent = "Could not analyse the image. Please fill in the details manually.";
+    status.textContent = "Failed";
+    showToast("AI analysis failed — fill details manually", "error");
   }
 
-  btn.textContent = "✅ Analyzed";
+  btn.disabled = false;
+  btn.innerHTML = "Analyse with AI";
 }
 
-// ===== SUBMIT REPORT =====
+/* ============================================================
+   SUBMIT
+============================================================ */
 function submitReport() {
-  const title = document.getElementById("issueTitle").value.trim();
-  const category = document.getElementById("issueCategory").value;
-  const desc = document.getElementById("issueDesc").value.trim();
-  const reporter = document.getElementById("reporterName").value.trim() || "Anonymous";
-  const location = document.getElementById("issueLocation").value.trim() || "Berhampur, Odisha";
-  const severity = document.getElementById("analyzeBtn").dataset.severity || "Medium";
+  const title = $("issueTitle").value.trim();
+  const category = $("issueCategory").value;
+  const desc = $("issueDesc").value.trim();
+  const reporter = $("reporterName").value.trim() || "Anonymous";
+  const location = $("issueLocation").value.trim() || "Berhampur";
+  const severity = $("issueSeverity").value || "Medium";
 
   if (!title || !category) {
-    showToast("⚠️ Please fill in title and category!", "error");
+    showToast("Please add a title and category first.", "error");
+    $("issueTitle").focus();
     return;
   }
-
-  const lat = 19.3149 + (Math.random() - 0.5) * 0.04;
-  const lng = 84.7941 + (Math.random() - 0.5) * 0.04;
 
   const issue = {
     id: Date.now(),
     title, category, description: desc,
-    reporter, location, lat, lng,
+    reporter, location,
+    lat: 19.3115 + (Math.random() - 0.5) * 0.03,
+    lng: 84.7952 + (Math.random() - 0.5) * 0.03,
     severity,
     status: "Open",
     upvotes: 0,
     verifiedBy: 0,
     image: currentImageBase64 ? `data:image/jpeg;base64,${currentImageBase64}` : null,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 
   issues.unshift(issue);
-  localStorage.setItem("civicIssues", JSON.stringify(issues));
-
-  addMarkerToMap(issue);
-  renderIssues();
-  updateStats();
-  updateDashboard();
+  save();
+  activeFilter = "all";
+  syncPillUI();
+  renderAll();
   resetForm();
-  showToast("✅ Issue reported successfully! Thank you, " + reporter);
+  showToast(`Report submitted — thank you, ${reporter}. You earned 10 pts.`, "success");
+  document.querySelector("#live").scrollIntoView({ behavior: prefersReduced ? "auto" : "smooth" });
 }
 
-// ===== RENDER ISSUES (Day 2) =====
-function renderIssues() {
-  const container = document.getElementById("issuesList");
-  if (issues.length === 0) {
-    container.innerHTML = `<p style="color:var(--muted); grid-column:1/-1; text-align:center; padding:2rem;">No issues reported yet. Be the first! 👆</p>`;
+function resetForm() {
+  $("issueTitle").value = "";
+  $("issueCategory").value = "";
+  $("issueSeverity").value = "Medium";
+  $("issueDesc").value = "";
+  $("issueLocation").value = "";
+  $("reporterName").value = "";
+  $("aiResult").classList.add("hidden");
+  resetUpload();
+}
+
+/* ============================================================
+   FEED
+============================================================ */
+function initFilters() {
+  document.querySelectorAll("#filterPills .pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      activeFilter = pill.dataset.filter;
+      syncPillUI();
+      renderFeed();
+      refreshMarkers();
+    });
+  });
+  syncPillUI();
+}
+
+function syncPillUI() {
+  document.querySelectorAll("#filterPills .pill").forEach((p) => {
+    const f = p.dataset.filter;
+    const count = f === "all" ? issues.length : issues.filter((i) => i.category === f).length;
+    p.innerHTML = `${f === "all" ? "All" : esc(f)}<span class="pill-count">${count}</span>`;
+    p.classList.toggle("active", f === activeFilter);
+  });
+}
+
+function issueCard(issue) {
+  const sev = sevClass(issue.severity);
+  const art = CATEGORY_ART[issue.category] || "art-other";
+  const icon = CATEGORY_ICON[issue.category] || CATEGORY_ICON["Other"];
+  const media = issue.image
+    ? `<img src="${issue.image}" alt="${esc(issue.title)}" loading="lazy" />`
+    : `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">${icon}</svg>`;
+
+  return `
+  <article class="issue-card">
+    <div class="issue-art ${art}">${media}</div>
+    <div class="issue-card-body">
+      <div class="issue-meta">
+        <span class="issue-category">${esc(issue.category)}</span>
+        <span class="sev-badge sev-${sev}">${esc((issue.severity || "Medium"))}</span>
+      </div>
+      <h3>${esc(issue.title)}</h3>
+      <p class="issue-desc">${esc(issue.description || "No description provided.")}</p>
+      <div class="issue-foot">
+        <span><svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="2"/></svg>${esc(issue.location)}</span>
+        <span><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>${esc(issue.reporter)}</span>
+        <span style="margin-left:auto">${timeAgo(issue.timestamp)}</span>
+      </div>
+      <div class="card-actions">
+        <button class="act-btn" onclick="upvote(${issue.id})" aria-label="Upvote">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 4l8 9h-5v7H9v-7H4l8-9z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>${issue.upvotes || 0}
+        </button>
+        <button class="act-btn ${issue.verifiedBy > 0 ? "on" : ""}" onclick="verify(${issue.id})" aria-label="Verify">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5l5 5L20 6.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>${issue.verifiedBy || 0}
+        </button>
+        <button class="act-btn" onclick="shareIssue(${issue.id})" aria-label="Share">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="2.5" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6" r="2.5" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="18" r="2.5" stroke="currentColor" stroke-width="2"/><path d="M8.2 10.8l7.5-3.7M8.2 13.2l7.5 3.7" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+        <select class="status-select" onchange="updateStatus(${issue.id}, this.value)" aria-label="Update status">
+          <option value="Open" ${issue.status === "Open" ? "selected" : ""}>Open</option>
+          <option value="In Progress" ${issue.status === "In Progress" ? "selected" : ""}>In progress</option>
+          <option value="Resolved" ${issue.status === "Resolved" ? "selected" : ""}>Resolved</option>
+        </select>
+      </div>
+    </div>
+  </article>`;
+}
+
+function renderFeed(animate = true) {
+  const container = $("issuesList");
+  const list = activeFilter === "all" ? issues : issues.filter((i) => i.category === activeFilter);
+
+  if (!list.length) {
+    container.innerHTML = `<p class="feed-empty">No issues in this category yet — be the first to report one</p>`;
     return;
   }
-  container.innerHTML = issues.slice(0, 9).map(issue => {
-    const sev = (issue.severity || "medium").toLowerCase();
-    const isCritical = sev === "critical";
-    const verifiedCount = issue.verifiedBy || 0;
+  container.innerHTML = list.slice(0, 12).map(issueCard).join("");
 
-    return `
-    <div class="issue-card ${isCritical ? 'critical-issue' : ''}">
-      ${issue.image
-        ? `<img src="${issue.image}" alt="${issue.title}" />`
-        : `<div style="height:160px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:3rem;">📍</div>`}
-      <div class="issue-card-body">
-        <div class="issue-meta">
-          <span class="issue-category">${issue.category}</span>
-          <span class="severity-badge severity-${sev}">${sev.toUpperCase()}</span>
-        </div>
-        <h3>${issue.title}</h3>
-        <p>${issue.description || "No description provided."}</p>
-        <div class="issue-footer">
-          <span>📍 ${issue.location}</span>
-          <span>👤 ${issue.reporter}</span>
-        </div>
-        <div class="card-actions">
-          <button class="upvote-btn" onclick="upvote(${issue.id})">👍 ${issue.upvotes}</button>
-          <button class="verify-btn ${verifiedCount > 0 ? 'verified' : ''}" onclick="verify(${issue.id})">
-            ✅ ${verifiedCount} verified
-          </button>
-          <select class="status-select" onchange="updateStatus(${issue.id}, this.value)">
-            <option value="Open"        ${issue.status === 'Open'        ? 'selected' : ''}>🔴 Open</option>
-            <option value="In Progress" ${issue.status === 'In Progress' ? 'selected' : ''}>🟡 In Progress</option>
-            <option value="Resolved"    ${issue.status === 'Resolved'    ? 'selected' : ''}>🟢 Resolved</option>
-          </select>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
+  // staggered scroll-reveal only when the set changes (not on upvote/verify)
+  if (animate && !prefersReduced && "IntersectionObserver" in window) {
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const el = e.target;
+        el.classList.add("in");
+        obs.unobserve(el);
+        setTimeout(() => { el.classList.remove("enter", "in"); el.style.transitionDelay = ""; }, 1100);
+      });
+    }, { threshold: 0.08 });
+    container.querySelectorAll(".issue-card").forEach((c, i) => {
+      c.classList.add("enter");
+      c.style.transitionDelay = `${Math.min(i, 7) * 70}ms`;
+      obs.observe(c);
+    });
+  }
 }
 
-// ===== UPVOTE =====
+/* ============================================================
+   CARD ACTIONS
+============================================================ */
+function findIssue(id) { return issues.find((i) => i.id === id); }
+
 function upvote(id) {
-  const issue = issues.find(i => i.id === id);
-  if (issue) {
-    issue.upvotes++;
-    localStorage.setItem("civicIssues", JSON.stringify(issues));
-    renderIssues();
-  }
+  const issue = findIssue(id);
+  if (!issue) return;
+  issue.upvotes = (issue.upvotes || 0) + 1;
+  save();
+  renderFeed();
+  refreshMarkers();
 }
 
-// ===== VERIFY (Day 2) =====
 function verify(id) {
-  const issue = issues.find(i => i.id === id);
-  if (issue) {
-    issue.verifiedBy = (issue.verifiedBy || 0) + 1;
-    localStorage.setItem("civicIssues", JSON.stringify(issues));
-    renderIssues();
-    showToast("✅ You verified this issue — thank you citizen!");
-  }
+  const issue = findIssue(id);
+  if (!issue) return;
+  issue.verifiedBy = (issue.verifiedBy || 0) + 1;
+  save();
+  renderFeed();
+  refreshMarkers();
+  updateStats();
+  showToast("Verified — thanks for being the community's eyes.", "success");
 }
 
-// ===== STATUS UPDATE (Day 2) =====
 function updateStatus(id, newStatus) {
-  const issue = issues.find(i => i.id === id);
-  if (issue) {
-    issue.status = newStatus;
-    localStorage.setItem("civicIssues", JSON.stringify(issues));
-    updateStats();
-    updateDashboard();
-    showToast(`Status updated to: ${newStatus}`);
+  const issue = findIssue(id);
+  if (!issue) return;
+  issue.status = newStatus;
+  save();
+  renderAll();
+  showToast(`Status updated to “${newStatus}”`, "success");
+}
+
+function shareIssue(id) {
+  const issue = findIssue(id);
+  if (!issue) return;
+  const text = `Civic issue reported on CivicReport:\n\n${issue.title}\n${issue.category} — ${issue.severity || "Medium"} severity\nLocation: ${issue.location}\nStatus: ${issue.status}\n\nReported by ${issue.reporter}`;
+
+  if (navigator.share) {
+    navigator.share({ title: issue.title, text }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(text);
+    showToast("Issue details copied to clipboard", "success");
   }
 }
 
-// ===== STATS =====
+/* ============================================================
+   STATS / DASHBOARD / HEALTH
+============================================================ */
 function updateStats() {
-  document.getElementById("stat-reported").textContent = issues.length;
-  document.getElementById("stat-resolved").textContent = issues.filter(i => i.status === "Resolved").length;
-  document.getElementById("stat-citizens").textContent = new Set(issues.map(i => i.reporter)).size;
+  if (statsAnimated) setStatsDirect();
+  else if (prefersReduced) { statsAnimated = true; setStatsDirect(); }
 }
 
-function animateHeroStats() {
-  const targets = { reported: issues.length + 47, resolved: 23, citizens: issues.length + 31 };
-  ["reported", "resolved", "citizens"].forEach(key => {
-    let count = 0;
-    const target = targets[key];
-    const el = document.getElementById(`stat-${key}`);
-    const step = Math.ceil(target / 40);
-    const timer = setInterval(() => {
-      count = Math.min(count + step, target);
-      el.textContent = count;
-      if (count >= target) clearInterval(timer);
-    }, 40);
-  });
-}
-
-// ===== DASHBOARD =====
 function updateDashboard() {
-  const categories = {
-    "Road Damage":      { countId: "count-road",  barId: "bar-road"  },
-    "Water Leakage":    { countId: "count-water", barId: "bar-water" },
-    "Streetlight":      { countId: "count-light", barId: "bar-light" },
-    "Waste Management": { countId: "count-waste", barId: "bar-waste" },
+  const cats = {
+    "Road Damage":      { c: "count-road",  b: "bar-road" },
+    "Water Leakage":    { c: "count-water", b: "bar-water" },
+    "Streetlight":      { c: "count-light", b: "bar-light" },
+    "Waste Management": { c: "count-waste", b: "bar-waste" },
   };
-  const max = Math.max(1, issues.length);
-  Object.entries(categories).forEach(([cat, ids]) => {
-    const count = issues.filter(i => i.category === cat).length;
-    document.getElementById(ids.countId).textContent = count;
-    document.getElementById(ids.barId).style.width = `${(count / max) * 100}%`;
+  const max = Math.max(1, ...Object.keys(cats).map((c) => issues.filter((i) => i.category === c).length));
+  Object.entries(cats).forEach(([cat, ids]) => {
+    const count = issues.filter((i) => i.category === cat).length;
+    const cEl = $(ids.c), bEl = $(ids.b);
+    if (cEl) cEl.textContent = count;
+    if (bEl) bEl.style.width = `${(count / max) * 100}%`;
   });
+  renderCharts();
 }
 
-// ===== RESET FORM =====
-function resetForm() {
-  document.getElementById("issueTitle").value = "";
-  document.getElementById("issueCategory").value = "";
-  document.getElementById("issueDesc").value = "";
-  document.getElementById("issueLocation").value = "";
-  document.getElementById("reporterName").value = "";
-  document.getElementById("previewImg").classList.add("hidden");
-  document.getElementById("uploadInner").classList.remove("hidden");
-  document.getElementById("aiResult").classList.add("hidden");
-  document.getElementById("analyzeBtn").disabled = true;
-  document.getElementById("analyzeBtn").textContent = "🔍 Analyze with Gemini";
-  document.getElementById("analyzeBtn").dataset.severity = "";
-  currentImageBase64 = null;
-}
-
-// ===== TOAST =====
-function showToast(message, type = "success") {
-  const toast = document.getElementById("toast");
-  toast.textContent = message;
-  toast.style.borderColor = type === "error" ? "var(--red)" : "var(--green)";
-  toast.classList.remove("hidden");
-  setTimeout(() => toast.classList.add("hidden"), 3500);
-}
-
-// ============================================================
-//  DAY 3 FEATURES
-// ============================================================
-
-// ===== NEWS TICKER =====
-function updateTicker() {
-  const track = document.getElementById("tickerTrack");
-  if (!track) return;
-
-  const defaults = [
-    "🔴 Stay alert — report issues in your area",
-    "💡 Together we can fix our city",
-    "📍 CivicReport — powered by Gemini AI",
-  ];
-
-  const items = issues.length > 0
-    ? issues.slice(0, 6).map(i =>
-        `🔴 <strong>${i.reporter}</strong> reported <strong>${i.category}</strong> in ${i.location} &nbsp;•&nbsp; Status: ${i.status}`
-      )
-    : defaults;
-
-  track.innerHTML = items.map(i => `<span>${i}</span>`).join("");
-}
-
-// ===== CITY HEALTH SCORE =====
 function updateHealthScore() {
-  const wrap = document.querySelector(".health-score-wrap");
-  if (!wrap) return;
-
+  const ring = $("healthRing");
+  const scoreEl = $("healthScore");
+  const labelEl = $("healthLabel");
   const total = issues.length;
-  if (total === 0) return;
 
-  const resolved  = issues.filter(i => i.status === "Resolved").length;
-  const critical  = issues.filter(i => (i.severity || "").toLowerCase() === "critical").length;
-  const highCount = issues.filter(i => (i.severity || "").toLowerCase() === "high").length;
-
-  let score = 100;
-  score -= (critical * 15);
-  score -= (highCount * 8);
-  score -= ((total - resolved) * 3);
-  score += (resolved * 5);
-  score = Math.max(0, Math.min(100, Math.round(score)));
-
-  const circumference = 314;
-  const offset = circumference - (score / 100) * circumference;
-  const ring = document.getElementById("healthRing");
-  const scoreEl = document.getElementById("healthScore");
-
-  if (ring) ring.style.strokeDashoffset = offset;
-
-  // animate number
-  if (scoreEl) {
-    let count = 0;
-    const timer = setInterval(() => {
-      count = Math.min(count + 2, score);
-      scoreEl.textContent = count;
-      if (count >= score) clearInterval(timer);
-    }, 30);
+  let score = 100, target = 78;
+  if (total > 0) {
+    const resolved = issues.filter((i) => i.status === "Resolved").length;
+    const critical = issues.filter((i) => (i.severity || "").toLowerCase() === "critical").length;
+    const high = issues.filter((i) => (i.severity || "").toLowerCase() === "high").length;
+    score -= critical * 15;
+    score -= high * 8;
+    score -= (total - resolved) * 3;
+    score += resolved * 5;
+    target = Math.max(0, Math.min(100, Math.round(score)));
   }
 
-  // color based on score
-  const color = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
-  if (ring) ring.style.stroke = color;
-  if (scoreEl) scoreEl.style.color = color;
+  const color = target >= 70 ? "var(--green)" : target >= 40 ? "var(--amber)" : "var(--red)";
+  const C = 339.3;
+  if (ring) {
+    ring.style.strokeDashoffset = C - (target / 100) * C;
+    ring.style.stroke = color;
+  }
+  if (labelEl) labelEl.textContent = target >= 70 ? "Healthy" : target >= 40 ? "Strained" : "Critical";
+
+  if (scoreEl) {
+    const t0 = performance.now();
+    const from = parseInt(scoreEl.textContent, 10) || 0;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / 900);
+      scoreEl.textContent = Math.round(from + (target - from) * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    scoreEl.style.color = color;
+  }
 }
 
-// ===== GAMIFICATION: POINTS SYSTEM =====
+/* ============================================================
+   GAMIFICATION
+============================================================ */
 function getPoints(reporter) {
-  const reportCount  = issues.filter(i => i.reporter === reporter).length;
-  const resolveCount = issues.filter(i => i.reporter === reporter && i.status === "Resolved").length;
-  const verifyCount  = issues.filter(i => i.reporter === reporter).reduce((a, b) => a + (b.verifiedBy || 0), 0);
-  return (reportCount * 10) + (resolveCount * 25) + (verifyCount * 5);
+  const reports = issues.filter((i) => i.reporter === reporter);
+  const reportCount = reports.length;
+  const resolveCount = reports.filter((i) => i.status === "Resolved").length;
+  const verifyCount = reports.reduce((a, b) => a + (b.verifiedBy || 0), 0);
+  return reportCount * 10 + resolveCount * 25 + verifyCount * 5;
 }
 
 function getBadge(points) {
-  if (points >= 100) return "🏆 Champion";
-  if (points >= 50)  return "⭐ Active Citizen";
-  if (points >= 20)  return "🌱 Contributor";
-  return "👋 Newcomer";
+  if (points >= 100) return "City Champion";
+  if (points >= 50) return "Active Citizen";
+  if (points >= 20) return "Contributor";
+  return "Newcomer";
 }
 
 function renderLeaderboard() {
-  const section = document.getElementById("leaderboardBody");
-  if (!section) return;
+  const body = $("leaderboardBody");
+  if (!body) return;
 
-  const reporters = [...new Set(issues.map(i => i.reporter))];
-  const ranked = reporters
-    .map(r => ({ name: r, points: getPoints(r), badge: getBadge(getPoints(r)) }))
+  const ranked = [...new Set(issues.map((i) => i.reporter))]
+    .map((r) => ({
+      name: r,
+      points: getPoints(r),
+      reports: issues.filter((i) => i.reporter === r).length,
+    }))
     .sort((a, b) => b.points - a.points)
     .slice(0, 8);
 
-  if (ranked.length === 0) {
-    section.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.5rem;">No citizens yet — report an issue to appear here!</td></tr>`;
+  if (!ranked.length) {
+    body.innerHTML = `<div class="lb-empty">No citizens yet — report an issue to appear here.</div>`;
     return;
   }
 
-  section.innerHTML = ranked.map((c, i) => `
-    <tr>
-      <td><span class="rank-badge rank-${i+1}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span></td>
-      <td>${c.name} <span class="citizen-badge">${c.badge}</span></td>
-      <td style="color:var(--accent);font-weight:600">${c.points} pts</td>
-      <td style="color:var(--muted);font-size:0.8rem">${issues.filter(x => x.reporter === c.name).length} reports</td>
-    </tr>
-  `).join("");
+  body.innerHTML = ranked
+    .map((c, i) => `
+      <div class="lb-row ${i === 0 ? "top" : ""}">
+        <span class="lb-rank">${String(i + 1).padStart(2, "0")}</span>
+        <span class="lb-name">${esc(c.name)}<span class="badge-pill">${getBadge(c.points)}</span></span>
+        <span class="lb-right lb-points">${c.points} pts</span>
+        <span class="lb-right lb-reports">${c.reports} reports</span>
+      </div>`)
+    .join("");
 }
 
-// ===== PREDICTIVE INSIGHTS (Gemini) =====
+/* ============================================================
+   PREDICTIVE INSIGHTS (Gemini)
+============================================================ */
 async function generateInsights() {
-  const btn = document.getElementById("insightsBtn");
-  const container = document.getElementById("insightsGrid");
+  const btn = $("insightsBtn");
+  const container = $("insightsGrid");
   if (!container) return;
+  const btnHTML = btn.innerHTML;
 
+  if (!hasKey()) {
+    container.innerHTML = `<p class="insights-empty">Add a free Gemini API key in config.js to unlock predictive insights</p>`;
+    showToast("AI insights need a Gemini API key in config.js", "error");
+    return;
+  }
   if (issues.length === 0) {
-    container.innerHTML = `<p class="insights-loading">Report some issues first to generate insights! 📊</p>`;
+    container.innerHTML = `<p class="insights-empty">Report some issues first — the AI needs data to analyse</p>`;
     return;
   }
 
-  btn.textContent = "⏳ Generating...";
   btn.disabled = true;
-  container.innerHTML = `<p class="insights-loading">✨ Gemini is analyzing your city data...</p>`;
+  btn.innerHTML = "Generating insights…";
+  container.innerHTML = `<p class="insights-empty">Gemini is reading your city data…</p>`;
 
   const summary = {
     total: issues.length,
+    resolved: issues.filter((i) => i.status === "Resolved").length,
+    open: issues.filter((i) => i.status === "Open").length,
+    inProgress: issues.filter((i) => i.status === "In Progress").length,
     byCategory: {},
     bySeverity: {},
-    resolved: issues.filter(i => i.status === "Resolved").length,
-    open: issues.filter(i => i.status === "Open").length,
   };
-
-  issues.forEach(i => {
+  issues.forEach((i) => {
     summary.byCategory[i.category] = (summary.byCategory[i.category] || 0) + 1;
-    const sev = i.severity || "Medium";
-    summary.bySeverity[sev] = (summary.bySeverity[sev] || 0) + 1;
+    const s = i.severity || "Medium";
+    summary.bySeverity[s] = (summary.bySeverity[s] || 0) + 1;
   });
 
-  const prompt = `You are a smart city AI analyst. Based on this civic issue data, generate 4 predictive insights:
+  const prompt = `You are a smart city AI analyst for Berhampur, India. Based on this civic issue data, generate exactly 4 predictive insights for city authorities:
 
-Data: ${JSON.stringify(summary)}
+${JSON.stringify(summary)}
 
 Return ONLY this JSON (no extra text):
 {
   "insights": [
     {
-      "icon": "emoji",
-      "title": "short title",
+      "title": "short punchy title",
       "text": "2 sentence insight or prediction",
       "tag": "Warning|Good|Critical",
-      "tagLabel": "short label"
+      "tagLabel": "short label e.g. Monsoon risk"
     }
   ]
 }`;
 
   try {
-    const response = await fetch(
-      "YOUR_GEMINI_API_KEY"
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      }
-    );
-
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const rawText = await callGemini(prompt);
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON in response");
+    const result = JSON.parse(jsonMatch[0]);
 
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      container.innerHTML = result.insights.map(ins => `
+    container.innerHTML = result.insights
+      .map(
+        (ins) => `
         <div class="insight-card">
-          <div class="insight-icon">${ins.icon}</div>
-          <div class="insight-title">${ins.title}</div>
-          <div class="insight-text">${ins.text}</div>
-          <span class="insight-tag tag-${ins.tag.toLowerCase()}">${ins.tagLabel}</span>
-        </div>
-      `).join("");
-    } else {
-      throw new Error("No JSON in response");
-    }
+          <span class="insight-tag tag-${(ins.tag || "warning").toLowerCase()}">${esc(ins.tagLabel || ins.tag)}</span>
+          <h4>${esc(ins.title)}</h4>
+          <p>${esc(ins.text)}</p>
+        </div>`
+      )
+      .join("");
+    showToast("City insights generated", "success");
   } catch (err) {
-    container.innerHTML = `<p class="insights-loading">⚠️ Could not generate insights. Try again!</p>`;
     console.error(err);
+    container.innerHTML = `<p class="insights-empty">Could not generate insights — check the API key and try again</p>`;
+    showToast("Insight generation failed", "error");
   }
 
-  btn.textContent = "🔄 Refresh Insights";
   btn.disabled = false;
+  btn.innerHTML = "Generate insights";
 }
 
-// ===== HEATMAP PULSE on MAP =====
-function addHeatmapPulse() {
-  if (!map) return;
-  issues.forEach(issue => {
-    if (!issue.lat || !issue.lng) return;
-    const sev = (issue.severity || "medium").toLowerCase();
-    const color = sev === "critical" ? "#dc2626" : sev === "high" ? "#ef4444" : sev === "medium" ? "#f59e0b" : "#10b981";
-    const size  = sev === "critical" ? 30 : sev === "high" ? 22 : 15;
-
-    L.circleMarker([issue.lat, issue.lng], {
-      radius: size, fillColor: color,
-      color: color, weight: 1,
-      opacity: 0.3, fillOpacity: 0.15
-    }).addTo(map);
-  });
-}
-
-// ===== HOOK INTO EXISTING INIT =====
-const _originalInit = document.addEventListener;
-window.addEventListener("load", () => {
-  updateTicker();
-  updateHealthScore();
-  renderLeaderboard();
-  addHeatmapPulse();
-  generateInsights();
-});
-
-// ============================================================
-//  DAY 4 FEATURES
-// ============================================================
-
-// ===== SHARE ISSUE =====
-function shareIssue(id) {
-  const issue = issues.find(i => i.id === id);
-  if (!issue) return;
-
-  const text = `🚨 Civic Issue Reported!\n\n📍 ${issue.location}\n🏷️ ${issue.category} — ${issue.severity || 'Medium'} Severity\n📝 ${issue.title}\n\n${issue.description || ''}\n\nStatus: ${issue.status}\n\nReported via CivicReport 🌆`;
-
-  if (navigator.share) {
-    navigator.share({ title: issue.title, text: text });
-  } else {
-    navigator.clipboard.writeText(text);
-    showToast("📋 Issue details copied to clipboard!");
-  }
-}
-
-// ===== PULSING HEATMAP =====
-function addPulsingHeatmap() {
-  if (!map) return;
-
-  issues.forEach(issue => {
-    if (!issue.lat || !issue.lng) return;
-    const sev = (issue.severity || "medium").toLowerCase();
-    const color  = sev === "critical" ? "#dc2626" : sev === "high" ? "#ef4444" : sev === "medium" ? "#f59e0b" : "#10b981";
-    const radius = sev === "critical" ? 35 : sev === "high" ? 25 : sev === "medium" ? 18 : 12;
-
-    // outer pulse ring
-    L.circleMarker([issue.lat, issue.lng], {
-      radius: radius,
-      fillColor: color,
-      color: color,
-      weight: 2,
-      opacity: 0.25,
-      fillOpacity: 0.12,
-      className: 'pulse-ring'
-    }).addTo(map);
-
-    // inner solid dot
-    L.circleMarker([issue.lat, issue.lng], {
-      radius: 7,
-      fillColor: color,
-      color: "#fff",
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.95
-    }).addTo(map).bindPopup(`
-      <div style="font-family:sans-serif;min-width:160px">
-        <strong style="color:${color}">${issue.title}</strong><br/>
-        <span style="font-size:0.8rem;color:#666">${issue.category} • ${issue.severity || 'Medium'}</span><br/>
-        <span style="font-size:0.8rem">Status: ${issue.status}</span><br/>
-        <span style="font-size:0.8rem">👤 ${issue.reporter}</span>
-      </div>
-    `);
-  });
-}
-
-// ===== SCROLL ANIMATIONS =====
-function initScrollAnimations() {
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.style.opacity = "1";
-        entry.target.style.transform = "translateY(0)";
-      }
-    });
-  }, { threshold: 0.1 });
-
-  document.querySelectorAll('.dash-card, .insight-card, .issue-card').forEach(el => {
-    el.style.opacity = "0";
-    el.style.transform = "translateY(20px)";
-    el.style.transition = "opacity 0.5s ease, transform 0.5s ease";
-    observer.observe(el);
-  });
-}
-
-// ===== FILTER ISSUES =====
-function filterIssues(category) {
-  const filtered = category === "all"
-    ? issues
-    : issues.filter(i => i.category === category);
-
-  const container = document.getElementById("issuesList");
-  if (filtered.length === 0) {
-    container.innerHTML = `<p style="color:var(--muted);grid-column:1/-1;text-align:center;padding:2rem;">No issues in this category yet!</p>`;
-    return;
-  }
-
-  container.innerHTML = filtered.slice(0, 9).map(issue => {
-    const sev = (issue.severity || "medium").toLowerCase();
-    const isCritical = sev === "critical";
-    const verifiedCount = issue.verifiedBy || 0;
-    return `
-    <div class="issue-card ${isCritical ? 'critical-issue' : ''}">
-      ${issue.image
-        ? `<img src="${issue.image}" alt="${issue.title}" />`
-        : `<div style="height:160px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:3rem;">📍</div>`}
-      <div class="issue-card-body">
-        <div class="issue-meta">
-          <span class="issue-category">${issue.category}</span>
-          <span class="severity-badge severity-${sev}">${sev.toUpperCase()}</span>
-        </div>
-        <h3>${issue.title}</h3>
-        <p>${issue.description || "No description provided."}</p>
-        <div class="issue-footer">
-          <span>📍 ${issue.location}</span>
-          <span>👤 ${issue.reporter}</span>
-        </div>
-        <div class="card-actions">
-          <button class="upvote-btn" onclick="upvote(${issue.id})">👍 ${issue.upvotes}</button>
-          <button class="verify-btn ${verifiedCount > 0 ? 'verified' : ''}" onclick="verify(${issue.id})">✅ ${verifiedCount}</button>
-          <button class="share-btn" onclick="shareIssue(${issue.id})">📤 Share</button>
-          <select class="status-select" onchange="updateStatus(${issue.id}, this.value)">
-            <option value="Open"        ${issue.status === 'Open'        ? 'selected' : ''}>🔴 Open</option>
-            <option value="In Progress" ${issue.status === 'In Progress' ? 'selected' : ''}>🟡 In Progress</option>
-            <option value="Resolved"    ${issue.status === 'Resolved'    ? 'selected' : ''}>🟢 Resolved</option>
-          </select>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-// ===== HOOK DAY 4 INTO LOAD =====
-window.addEventListener("load", () => {
-  addPulsingHeatmap();
-  initScrollAnimations();
-});
-
-// ============================================================
-//  CHARTS — Chart.js
-// ============================================================
-
-let categoryChartInstance = null;
-let statusChartInstance = null;
+/* ============================================================
+   CHARTS (Chart.js)
+============================================================ */
+let categoryChart = null;
+let statusChart = null;
 
 function renderCharts() {
-  const categoryCtx = document.getElementById("categoryChart");
-  const statusCtx = document.getElementById("statusChart");
-  if (!categoryCtx || !statusCtx) return;
+  const catCtx = $("categoryChart");
+  const statusCtx = $("statusChart");
+  if (!catCtx || !statusCtx || typeof Chart === "undefined") return;
 
-  // ---- Data ----
   const categories = ["Road Damage", "Water Leakage", "Streetlight", "Waste Management", "Public Infrastructure", "Other"];
-  const categoryCounts = categories.map(c => issues.filter(i => i.category === c).length);
+  const shortLabels = ["Road", "Water", "Light", "Waste", "Infra", "Other"];
+  const catCounts = categories.map((c) => issues.filter((i) => i.category === c).length);
 
-  const statusLabels = ["Open", "In Progress", "Resolved"];
-  const statusCounts = statusLabels.map(s => issues.filter(i => i.status === s).length);
+  const statuses = ["Open", "In Progress", "Resolved"];
+  const statusCounts = statuses.map((s) => issues.filter((i) => i.status === s).length);
 
-  // ---- Destroy old charts if exist ----
-  if (categoryChartInstance) categoryChartInstance.destroy();
-  if (statusChartInstance) statusChartInstance.destroy();
+  const mono = { family: "'JetBrains Mono', monospace", size: 11 };
 
-  // ---- Category Bar Chart ----
-  categoryChartInstance = new Chart(categoryCtx, {
+  try {
+  if (categoryChart) categoryChart.destroy();
+  if (statusChart) statusChart.destroy();
+
+  categoryChart = new Chart(catCtx, {
     type: "bar",
     data: {
-      labels: ["Road", "Water", "Light", "Waste", "Infrastructure", "Other"],
+      labels: shortLabels,
       datasets: [{
         label: "Issues",
-        data: categoryCounts,
-        backgroundColor: [
-          "rgba(59,130,246,0.7)",
-          "rgba(6,182,212,0.7)",
-          "rgba(245,158,11,0.7)",
-          "rgba(16,185,129,0.7)",
-          "rgba(139,92,246,0.7)",
-          "rgba(100,116,139,0.7)",
-        ],
-        borderColor: [
-          "#3b82f6","#06b6d4","#f59e0b","#10b981","#8b5cf6","#64748b"
-        ],
-        borderWidth: 1,
+        data: catCounts,
+        backgroundColor: "rgba(255, 90, 31, 0.85)",
+        hoverBackgroundColor: "#FF5A1F",
         borderRadius: 6,
-      }]
+        borderSkipped: false,
+        maxBarThickness: 42,
+      }],
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "#1a2235",
-          titleColor: "#f1f5f9",
-          bodyColor: "#64748b",
-          borderColor: "#1e2d45",
+          backgroundColor: "#1B1915",
+          borderColor: "rgba(242,239,230,0.2)",
           borderWidth: 1,
-        }
+          titleColor: "#F2EFE6",
+          bodyColor: "#8F8A79",
+          titleFont: mono,
+          bodyFont: mono,
+          padding: 12,
+          displayColors: false,
+        },
       },
       scales: {
         x: {
-  ticks: { 
-    color: "#64748b", 
-    font: { size: 11 },
-    maxRotation: 0,  // yeh add kar
-    minRotation: 0   // yeh add kar
-  },
-  grid: { color: "rgba(30,45,69,0.5)" }
-},
+          ticks: { color: "#8F8A79", font: mono },
+          grid: { display: false },
+          border: { color: "rgba(242,239,230,0.12)" },
+        },
         y: {
-          ticks: { color: "#64748b", stepSize: 1 },
-          grid: { color: "rgba(30,45,69,0.5)" },
+          ticks: { color: "#8F8A79", font: mono, stepSize: 1, precision: 0 },
+          grid: { color: "rgba(242,239,230,0.06)" },
+          border: { display: false },
           beginAtZero: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
-  // ---- Status Donut Chart ----
-  statusChartInstance = new Chart(statusCtx, {
+  statusChart = new Chart(statusCtx, {
     type: "doughnut",
     data: {
-      labels: statusLabels,
+      labels: statuses,
       datasets: [{
         data: statusCounts,
-        backgroundColor: [
-          "rgba(239,68,68,0.8)",
-          "rgba(245,158,11,0.8)",
-          "rgba(16,185,129,0.8)",
-        ],
-        borderColor: ["#ef4444","#f59e0b","#10b981"],
-        borderWidth: 2,
-        hoverOffset: 6,
-      }]
+        backgroundColor: ["#FF5A1F", "#FFC24B", "#7BD88F"],
+        borderColor: "#151310",
+        borderWidth: 3,
+        hoverOffset: 8,
+      }],
     },
     options: {
       responsive: true,
-      cutout: "65%",
+      maintainAspectRatio: false,
+      cutout: "68%",
       plugins: {
         legend: {
           position: "bottom",
-          labels: {
-            color: "#64748b",
-            font: { size: 11 },
-            padding: 16,
-          }
+          labels: { color: "#8F8A79", font: mono, padding: 16, boxWidth: 10, boxHeight: 10, usePointStyle: true },
         },
         tooltip: {
-          backgroundColor: "#1a2235",
-          titleColor: "#f1f5f9",
-          bodyColor: "#64748b",
-          borderColor: "#1e2d45",
+          backgroundColor: "#1B1915",
+          borderColor: "rgba(242,239,230,0.2)",
           borderWidth: 1,
-        }
-      }
-    }
+          titleColor: "#F2EFE6",
+          bodyColor: "#8F8A79",
+          titleFont: mono,
+          bodyFont: mono,
+          padding: 12,
+        },
+      },
+    },
   });
+  } catch (err) {
+    console.warn("Charts unavailable:", err.message);
+  }
 }
 
-// hook into existing flow
-window.addEventListener("load", () => {
-  renderCharts();
-});
+/* ============================================================
+   TOAST
+============================================================ */
+let toastTimer = null;
+function showToast(message, type = "success") {
+  const toast = $("toast");
+  toast.textContent = message;
+  toast.className = `toast show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 3600);
+}
+
+/* Expose handlers used in inline onclick */
+Object.assign(window, { upvote, verify, updateStatus, shareIssue, generateInsights });
