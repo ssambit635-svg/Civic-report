@@ -151,8 +151,9 @@ const CONFIG = {
 civic-report/
 │
 ├── index.html          # Main HTML — all sections
-├── style.css           # Full styling — light govt theme
+├── style.css           # Full styling — dark editorial theme (safety-orange accent)
 ├── app.js              # All JavaScript logic + Gemini API calls
+├── config.example.js   # Template for your API key (copy to config.js)
 ├── config.js           # 🔒 API key (NOT pushed to GitHub)
 ├── .gitignore          # Ignores config.js
 └── README.md           # You are here!
@@ -190,7 +191,7 @@ This platform directly addresses **SDG 11 — Sustainable Cities and Communities
 **Sambit** — First Year B.Tech CSE @ NIST University, Berhampur
 
 [![GitHub](https://img.shields.io/badge/GitHub-ssambit635--svg-181717?style=flat-square&logo=github)](https://github.com/ssambit635-svg)
-[![LinkedIn](www.linkedin.com/in/sambit-swain-7032a8378)](https://linkedin.com)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Sambit%20Swain-0A66C2?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/sambit-swain-7032a8378)
 
 ---
 
