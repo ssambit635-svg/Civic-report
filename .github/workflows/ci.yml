@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Checks and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the credential scan can inspect every commit.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # There are no dependencies to install, which is the point.
+      - name: Syntax check
+        run: npm run check
+
+      - name: Test suite
+        run: npm test
+
+      - name: Credential scan (working tree and full history)
+        run: npm run scan:history
+
+      - name: Confirm no key-shaped string ships to the browser
+        run: |
+          if grep -rIn --include="*.html" --include="app.js" --include="style.css" -E "AIza[0-9A-Za-z_-]{10,}" .; then
+            echo "::error::A key-shaped string is present in client-facing files."
+            exit 1
+          fi
+          echo "Client-facing files contain no API key material."

@@ -1,1 +1,32 @@
+# --- Secrets: never commit these -------------------------------------------
+.env
+.env.*
+!.env.example
 config.js
+config.local.js
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+secrets/
+.credentials/
+
+# --- Dependencies and build output ----------------------------------------
+node_modules/
+dist/
+build/
+coverage/
+# Note: vendor/ is intentionally not ignored. Run "npm run vendor" to
+# self-host the pinned browser libraries and commit the result.
+
+# --- Logs and editor noise -------------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
