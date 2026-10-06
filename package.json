@@ -1,0 +1,22 @@
+{
+  "name": "civicreport",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-assisted civic issue reporting for Berhampur, Odisha. A static front end plus a zero-dependency Node server that keeps the Gemini API key off the client.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "start:env": "node --env-file=.env server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check app.js && node --check server.js && node --check tools/vendor-assets.mjs && node --check tools/scan-secrets.mjs",
+    "scan": "node tools/scan-secrets.mjs",
+    "scan:history": "node tools/scan-secrets.mjs --history",
+    "vendor": "node tools/vendor-assets.mjs",
+    "verify": "node tools/vendor-assets.mjs --verify-only",
+    "test": "node --test"
+  }
+}
