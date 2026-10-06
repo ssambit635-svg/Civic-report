@@ -213,3 +213,4 @@ MIT. See [LICENSE](LICENSE). Third-party assets keep their own licences, listed 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Sambit%20Swain-0A66C2?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/sambit-swain-7032a8378)
 
 Security reports go through the [private advisory form](https://github.com/ssambit635-svg/Civic-report/security/advisories/new), never a public issue.
+live  - https://ssambit635-svg.github.io/Civic-report/
