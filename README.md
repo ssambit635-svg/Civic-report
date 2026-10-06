@@ -112,7 +112,7 @@ Built as a real-world solution for **Berhampur, Odisha** — but designed to sca
 
 ### Prerequisites
 - A modern browser (Chrome recommended)
-- Google Gemini API key — [Get it free here](https://aistudio.google.com/apikey)
+- Google Gemini API key — 
 - VS Code + Live Server extension
 
 ### Steps
